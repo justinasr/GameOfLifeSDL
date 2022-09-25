@@ -10,8 +10,8 @@
 
 #define DEAD 0
 #define ALIVE 8
-#define ALIVE_OLD ALIVE*2
-#define ALIEN 64
+#define OLD (ALIVE*2)
+#define ALIEN (OLD+1)
 
 #include <stdint.h>
 #include <string>
@@ -30,8 +30,10 @@ class Game {
         uint8_t *world;
         uint8_t *oldWorld;
         uint8_t fps;
+        uint32_t *colors;
+        uint64_t iteration;
         uint8_t getCell(uint8_t*, int16_t, int16_t);
-        uint8_t getBinaryCell(uint8_t*, int16_t, int16_t);
+        uint8_t getCellBinary(uint8_t*, int16_t, int16_t);
         void setCell(uint8_t*, int16_t, int16_t, uint8_t);
         void step();
         void render();

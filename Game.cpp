@@ -6,6 +6,35 @@
 Game::Game()
 {
     fps = 20;
+    // Calculate cell color for each state
+    // from DEAD to ALIEN inclusive
+    colors = new uint32_t[ALIEN + 1];
+    for (uint8_t i = 0; i < ALIEN + 1; ++i)
+    {
+        if (i == 0)
+        {
+            colors[i] = 0xFF; // R=G=B=0 A=0xFF
+        }
+        else if (i < ALIVE)
+        {
+            colors[i] = ((i * 16) & (0xFF)) << 24 |
+                        ((i * 16) & (0xFF)) << 16 |
+                        ((i * 16) & (0xFF)) << 8 |
+                        0xFF; // Gray
+        }
+        else if (i < OLD)
+        {
+            colors[i] = 0x00C000FF; // Green
+        }
+        else if (i < ALIEN)
+        {
+            colors[i] = 0x0020C0FF; // Blue
+        }
+        else if (i == ALIEN)
+        {
+            colors[i] = 0xC00000FF; // Red
+        }
+    }
 }
 
 Game::~Game()
@@ -17,12 +46,15 @@ Game::~Game()
 
 void Game::initialize(std::string name)
 {
+    // Create two empty worlds
     world = new uint8_t[BOARD_H * BOARD_W];
     oldWorld = new uint8_t[BOARD_H * BOARD_W];
+    // Initialize one world
     for (uint16_t y = 0; y < BOARD_H; ++y)
     {
         for (uint16_t x = 0; x < BOARD_W; ++x)
         {
+            // Populate ~20% of cells
             setCell(world, x, y, rand() % 5 ? DEAD : ALIVE);
         }
     }
@@ -82,12 +114,22 @@ void Game::run()
                 {
                     count = 0;
                 }
+                else if (event.key.keysym.sym == SDLK_c)
+                {
+                    // Clear all
+                    memset(world, DEAD, BOARD_H * BOARD_W * sizeof(uint8_t));
+                }
+                else if (event.key.keysym.sym == SDLK_n)
+                {
+                    // Do one step
+                    step();
+                }
                 break;
             case SDL_MOUSEBUTTONDOWN:
                 setCell(world,
                         event.button.x / CELL_SIZE,
                         event.button.y / CELL_SIZE,
-                        getBinaryCell(world, event.button.x / CELL_SIZE, event.button.y / CELL_SIZE) ? DEAD : ALIVE);
+                        getCellBinary(world, event.button.x / CELL_SIZE, event.button.y / CELL_SIZE) ? DEAD : ALIVE);
             default:
                 break;
             }
@@ -96,22 +138,13 @@ void Game::run()
         if (isSimulating)
         {
             step();
-            if (count % 1024 == 0)
-            {
-                uint16_t aliens = (BOARD_W * BOARD_H / 30);
-                for (uint16_t i = 0; i < aliens; i++)
-                {
-                    setCell(world, rand() % BOARD_W, rand() % BOARD_H, ALIEN);
-                }
-            }
-            count++;
         }
         render();
         SDL_Delay(1000 / fps);
     }
 }
 
-uint8_t Game::getBinaryCell(uint8_t *board, int16_t x, int16_t y)
+uint8_t Game::getCellBinary(uint8_t *board, int16_t x, int16_t y)
 {
     return getCell(board, x, y) < ALIVE ? 0 : 1;
 }
@@ -132,7 +165,7 @@ void Game::setCell(uint8_t *board, int16_t x, int16_t y, uint8_t value)
 
 void Game::step()
 {
-    uint8_t sum;
+    uint8_t neighbours;
     uint8_t oldCell;
     uint8_t *tmp = oldWorld;
     uint16_t alive = 0;
@@ -143,55 +176,56 @@ void Game::step()
         for (uint16_t x = 0; x < BOARD_W; ++x)
         {
             oldCell = getCell(oldWorld, x, y);
-            sum = getBinaryCell(oldWorld, x - 1, y - 1) +
-                  getBinaryCell(oldWorld, x - 1, y) +
-                  getBinaryCell(oldWorld, x - 1, y + 1) +
-                  getBinaryCell(oldWorld, x, y - 1) +
-                  getBinaryCell(oldWorld, x, y + 1) +
-                  getBinaryCell(oldWorld, x + 1, y - 1) +
-                  getBinaryCell(oldWorld, x + 1, y) +
-                  getBinaryCell(oldWorld, x + 1, y + 1);
+            neighbours = getCellBinary(oldWorld, x - 1, y - 1) +
+                         getCellBinary(oldWorld, x - 1, y) +
+                         getCellBinary(oldWorld, x - 1, y + 1) +
+                         getCellBinary(oldWorld, x, y - 1) +
+                         getCellBinary(oldWorld, x, y + 1) +
+                         getCellBinary(oldWorld, x + 1, y - 1) +
+                         getCellBinary(oldWorld, x + 1, y) +
+                         getCellBinary(oldWorld, x + 1, y + 1);
 
-            if (sum <= 1 || sum > 3)
+            if (neighbours == 3 && oldCell < ALIVE)
+            {
+                // Any dead cell with exactly three live
+                // neighbours becomes a live cell
+                setCell(world, x, y, ALIVE);
+                alive++;
+            }
+            else if (neighbours < 2 || neighbours > 3 || oldCell < ALIVE)
             {
                 // Any live cell with fewer than two live neighbours dies
                 // Any live cell with more than three live neighbours dies
+                // Any dead cell stays dead
                 if (oldCell == DEAD)
                 {
+                    // Dead stays dead
                     setCell(world, x, y, DEAD);
                 }
                 else
                 {
+                    // Fading out cell fades out by 1
+                    // In case it is an OLD cell, it has to
+                    // start fading out from ALIVE value
                     setCell(world, x, y, std::min(ALIVE, (int)oldCell) - 1);
                 }
             }
-            else if (sum == 3 && oldCell < ALIVE)
-            {
-                // Any dead cell with exactly three live neighbours becomes a live cell
-                setCell(world, x, y, ALIVE);
-                alive++;
-            }
-            else
+            else if (oldCell >= ALIVE)
             {
                 // Any live cell with two or three live neighbours lives on
-                if (oldCell >= ALIVE)
-                {
-                    // Getting older
-                    setCell(world, x, y, std::min(ALIVE_OLD, oldCell + 1));
-                    alive++;
-                }
-                else
-                {
-                    if (oldCell == DEAD)
-                    {
-                        setCell(world, x, y, DEAD);
-                    }
-                    else
-                    {
-                        setCell(world, x, y, std::min(ALIVE, (int)oldCell) - 1);
-                    }
-                }
+                setCell(world, x, y, std::min(OLD, oldCell + 1));
+                alive++;
             }
+        }
+    }
+    ++iteration;
+    // Every 1024 - random alien injection
+    if (iteration % 1024 == 0)
+    {
+        uint16_t aliens = (BOARD_W * BOARD_H / 30);
+        for (uint16_t i = 0; i < aliens; i++)
+        {
+            setCell(world, rand() % BOARD_W, rand() % BOARD_H, ALIEN);
         }
     }
 }
@@ -201,42 +235,24 @@ void Game::render()
     SDL_SetRenderDrawColor(renderer, 32, 32, 32, 255);
     SDL_RenderClear(renderer);
 
-    SDL_SetRenderDrawColor(renderer, 0, 192, 0, 255);
-    uint8_t value;
+    uint32_t color;
+    SDL_Rect rect;
+    rect.w = std::max(1, CELL_SIZE - 1);
+    rect.h = std::max(1, CELL_SIZE - 1);
     for (uint16_t y = 0; y < BOARD_H; ++y)
     {
         for (uint16_t x = 0; x < BOARD_W; ++x)
         {
-            value = getCell(world, x, y);
-            if (value == 0)
-            {
-                SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
-            }
-            else if (value < ALIVE)
-            {
-                SDL_SetRenderDrawColor(renderer, value * 16, value * 16, value * 16, 255);
-            }
-            else if (value < ALIVE_OLD)
-            {
-                SDL_SetRenderDrawColor(renderer, 0, 192, 0, 255);
-            }
-            else if (value < ALIEN)
-            {
-                SDL_SetRenderDrawColor(renderer, 0, 32, 192, 255);
-            }
-            else if (value == ALIEN)
-            {
-                SDL_SetRenderDrawColor(renderer, 192, 0, 0, 255);
-            }
-
-            SDL_Rect rect;
+            color = colors[getCell(world, x, y)];
+            SDL_SetRenderDrawColor(renderer,
+                                   (color >> 24) & 0xFF,
+                                   (color >> 16) & 0xFF,
+                                   (color >> 8) & 0xFF,
+                                   color & 0xFF);
             rect.x = CELL_SIZE * x;
             rect.y = CELL_SIZE * y;
-            rect.w = CELL_SIZE - 1;
-            rect.h = CELL_SIZE - 1;
             SDL_RenderFillRect(renderer, &rect);
         }
     }
-
     SDL_RenderPresent(renderer);
 }
