@@ -11,6 +11,8 @@ In this implementation, world wraps around, that is, cell to the left of leftmos
 
 In order to prevent stable state, random cells are made alive every 512 generations ("aliens").
 
+Dead cells are black, alive cells are green. When alive cell dies, it slowly fades from gray to black. If alive cells lives for 16 generations, it becomes "old" and changes color to blue. Aliens are red during the generation that they are injected.
+
 ### Controls:
 
 - `arrow up` - increase game speed
@@ -24,3 +26,4 @@ In order to prevent stable state, random cells are made alive every 512 generati
 - `-` - decrease cell size
 - left mouse click to toggle cell
 
+<sub>Dedicated to 40/3-A19 and everyone who was there :heart:</sub>
