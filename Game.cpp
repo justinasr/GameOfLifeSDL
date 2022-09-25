@@ -114,14 +114,14 @@ void Game::run()
                 }
                 else if (event.key.keysym.sym == SDLK_a)
                 {
-                    alienCounter = 1023;
+                    alienCounter = 511;
                 }
                 else if (event.key.keysym.sym == SDLK_c)
                 {
                     // Clear all
                     memset(world, DEAD, boardWidth * boardHeight * sizeof(uint8_t));
                 }
-                else if (event.key.keysym.sym == SDLK_n)
+                else if (event.key.keysym.sym == SDLK_n && !isSimulating)
                 {
                     // Do one step
                     step();
@@ -231,8 +231,8 @@ void Game::step()
         }
     }
     ++alienCounter;
-    // Every 1024 - random alien injection
-    if (alienCounter % 1024 == 0)
+    // Every 512 - random alien injection
+    if (alienCounter % 512 == 0)
     {
         uint16_t aliens = (boardWidth * boardHeight / 30);
         for (uint16_t i = 0; i < aliens; i++)
