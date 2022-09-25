@@ -3,9 +3,22 @@
 #include <stdlib.h>
 #include <math.h>
 
-Game::Game()
+Game::Game(std::string name)
 {
+    // returns zero on success else non-zero
+    if (SDL_Init(SDL_INIT_EVERYTHING) != 0)
+    {
+        printf("error initializing SDL: %s\n", SDL_GetError());
+    }
+    window = SDL_CreateWindow(name.c_str(),
+                              SDL_WINDOWPOS_CENTERED,
+                              SDL_WINDOWPOS_CENTERED,
+                              WINDOW_W,
+                              WINDOW_H,
+                              SDL_WINDOW_SHOWN);
+    renderer = SDL_CreateRenderer(window, -1, 0);
     fps = 20;
+    cellSize = 8;
     // Calculate cell color for each state
     // from DEAD to ALIEN inclusive
     colors = new uint32_t[ALIEN + 1];
@@ -44,33 +57,22 @@ Game::~Game()
     SDL_Quit();
 }
 
-void Game::initialize(std::string name)
+void Game::initialize()
 {
+    boardWidth = WINDOW_W / cellSize;
+    boardHeight = WINDOW_H / cellSize;
     // Create two empty worlds
-    world = new uint8_t[BOARD_H * BOARD_W];
-    oldWorld = new uint8_t[BOARD_H * BOARD_W];
+    world = new uint8_t[boardWidth * boardHeight];
+    oldWorld = new uint8_t[boardWidth * boardHeight];
     // Initialize one world
-    for (uint16_t y = 0; y < BOARD_H; ++y)
+    for (uint16_t y = 0; y < boardHeight; ++y)
     {
-        for (uint16_t x = 0; x < BOARD_W; ++x)
+        for (uint16_t x = 0; x < boardWidth; ++x)
         {
             // Populate ~20% of cells
             setCell(world, x, y, rand() % 5 ? DEAD : ALIVE);
         }
     }
-
-    // returns zero on success else non-zero
-    if (SDL_Init(SDL_INIT_EVERYTHING) != 0)
-    {
-        printf("error initializing SDL: %s\n", SDL_GetError());
-    }
-    window = SDL_CreateWindow(name.c_str(),
-                              SDL_WINDOWPOS_CENTERED,
-                              SDL_WINDOWPOS_CENTERED,
-                              WINDOW_W,
-                              WINDOW_H,
-                              SDL_WINDOW_SHOWN);
-    renderer = SDL_CreateRenderer(window, -1, 0);
 }
 
 void Game::run()
@@ -112,24 +114,34 @@ void Game::run()
                 }
                 else if (event.key.keysym.sym == SDLK_a)
                 {
-                    count = 0;
+                    alienCounter = 1023;
                 }
                 else if (event.key.keysym.sym == SDLK_c)
                 {
                     // Clear all
-                    memset(world, DEAD, BOARD_H * BOARD_W * sizeof(uint8_t));
+                    memset(world, DEAD, boardWidth * boardHeight * sizeof(uint8_t));
                 }
                 else if (event.key.keysym.sym == SDLK_n)
                 {
                     // Do one step
                     step();
                 }
+                else if ((event.key.keysym.sym == SDLK_PLUS || event.key.keysym.sym == SDLK_EQUALS) && cellSize < 128)
+                {
+                    cellSize *= 2;
+                    initialize();
+                }
+                else if (event.key.keysym.sym == SDLK_MINUS && cellSize > 1)
+                {
+                    cellSize /= 2;
+                    initialize();
+                }
                 break;
             case SDL_MOUSEBUTTONDOWN:
                 setCell(world,
-                        event.button.x / CELL_SIZE,
-                        event.button.y / CELL_SIZE,
-                        getCellBinary(world, event.button.x / CELL_SIZE, event.button.y / CELL_SIZE) ? DEAD : ALIVE);
+                        event.button.x / cellSize,
+                        event.button.y / cellSize,
+                        getCellBinary(world, event.button.x / cellSize, event.button.y / cellSize) ? DEAD : ALIVE);
             default:
                 break;
             }
@@ -151,16 +163,16 @@ uint8_t Game::getCellBinary(uint8_t *board, int16_t x, int16_t y)
 
 uint8_t Game::getCell(uint8_t *board, int16_t x, int16_t y)
 {
-    x = (x + BOARD_W) % BOARD_W;
-    y = (y + BOARD_H) % BOARD_H;
-    return board[y * BOARD_W + x];
+    x = (x + boardWidth) % boardWidth;
+    y = (y + boardHeight) % boardHeight;
+    return board[y * boardWidth + x];
 }
 
 void Game::setCell(uint8_t *board, int16_t x, int16_t y, uint8_t value)
 {
-    x = (x + BOARD_W) % BOARD_W;
-    y = (y + BOARD_H) % BOARD_H;
-    board[y * BOARD_W + x] = value;
+    x = (x + boardWidth) % boardWidth;
+    y = (y + boardHeight) % boardHeight;
+    board[y * boardWidth + x] = value;
 }
 
 void Game::step()
@@ -171,9 +183,9 @@ void Game::step()
     uint16_t alive = 0;
     oldWorld = world;
     world = tmp;
-    for (uint16_t y = 0; y < BOARD_H; ++y)
+    for (uint16_t y = 0; y < boardHeight; ++y)
     {
-        for (uint16_t x = 0; x < BOARD_W; ++x)
+        for (uint16_t x = 0; x < boardWidth; ++x)
         {
             oldCell = getCell(oldWorld, x, y);
             neighbours = getCellBinary(oldWorld, x - 1, y - 1) +
@@ -218,14 +230,14 @@ void Game::step()
             }
         }
     }
-    ++iteration;
+    ++alienCounter;
     // Every 1024 - random alien injection
-    if (iteration % 1024 == 0)
+    if (alienCounter % 1024 == 0)
     {
-        uint16_t aliens = (BOARD_W * BOARD_H / 30);
+        uint16_t aliens = (boardWidth * boardHeight / 30);
         for (uint16_t i = 0; i < aliens; i++)
         {
-            setCell(world, rand() % BOARD_W, rand() % BOARD_H, ALIEN);
+            setCell(world, rand() % boardWidth, rand() % boardHeight, ALIEN);
         }
     }
 }
@@ -237,11 +249,11 @@ void Game::render()
 
     uint32_t color;
     SDL_Rect rect;
-    rect.w = std::max(1, CELL_SIZE - 1);
-    rect.h = std::max(1, CELL_SIZE - 1);
-    for (uint16_t y = 0; y < BOARD_H; ++y)
+    rect.w = std::max(1, cellSize - 1);
+    rect.h = std::max(1, cellSize - 1);
+    for (uint16_t y = 0; y < boardHeight; ++y)
     {
-        for (uint16_t x = 0; x < BOARD_W; ++x)
+        for (uint16_t x = 0; x < boardWidth; ++x)
         {
             color = colors[getCell(world, x, y)];
             SDL_SetRenderDrawColor(renderer,
@@ -249,8 +261,8 @@ void Game::render()
                                    (color >> 16) & 0xFF,
                                    (color >> 8) & 0xFF,
                                    color & 0xFF);
-            rect.x = CELL_SIZE * x;
-            rect.y = CELL_SIZE * y;
+            rect.x = cellSize * x;
+            rect.y = cellSize * y;
             SDL_RenderFillRect(renderer, &rect);
         }
     }
